@@ -1,23 +1,3 @@
-"""
-main.py
-=======
-End-to-end stock-price forecasting pipeline.
-
-Steps:
-    1. Load & clean historical prices
-    2. Stationarity check (ADF) and auto-select differencing order d
-    3. Chronological train/test split
-    4. Train & evaluate AR, MA, ARMA, ARIMA (walk-forward)
-    5. Train & evaluate a standalone LSTM
-    6. Train & evaluate the hybrid ARIMA-LSTM
-    7. Save comparison plots + a metrics summary to results/
-
-Usage:
-    python main.py
-    python main.py --data data/sample_stock_data.csv --column Close --epochs 30
-    python main.py --quick          # fast smoke-test (few epochs, small grid)
-"""
-
 from __future__ import annotations
 
 import os
@@ -26,7 +6,6 @@ import argparse
 import numpy as np
 import pandas as pd
 
-# Make `src` importable when run from the project root
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src import data_preprocessing as dp
@@ -59,9 +38,6 @@ def main():
     if args.quick:
         args.epochs = 3
 
-    # ------------------------------------------------------------------ #
-    # 1. Load & clean
-    # ------------------------------------------------------------------ #
     print("=" * 70)
     print("STEP 1 — Load & clean data")
     print("=" * 70)
@@ -73,9 +49,7 @@ def main():
     utils.plot_series(series.values, title=f"{args.column} price",
                       save_path=os.path.join(args.results_dir, "01_price_series.png"))
 
-    # ------------------------------------------------------------------ #
-    # 2. Stationarity check
-    # ------------------------------------------------------------------ #
+
     print("\n" + "=" * 70)
     print("STEP 2 — Stationarity check (ADF)")
     print("=" * 70)
@@ -89,9 +63,7 @@ def main():
         print(f"Differenced (d={d}): ADF={adf_diff['adf_statistic']:.4f}, "
               f"p={adf_diff['p_value']:.4f}, stationary={adf_diff['is_stationary']}")
 
-    # ------------------------------------------------------------------ #
-    # 3. Train/test split
-    # ------------------------------------------------------------------ #
+
     print("\n" + "=" * 70)
     print("STEP 3 — Train/test split")
     print("=" * 70)
@@ -102,21 +74,16 @@ def main():
     metrics = {}
     preds = {}
 
-    # ------------------------------------------------------------------ #
-    # 4. Classical models: AR, MA, ARMA, ARIMA
-    # ------------------------------------------------------------------ #
     print("\n" + "=" * 70)
     print("STEP 4 — Classical models (walk-forward one-step-ahead)")
     print("=" * 70)
 
-    # AR(p) and MA(q) work on the (stationary) differenced level via d in order
     classical = {
         "AR":   (2, 0, 0),
         "MA":   (0, 0, 2),
         "ARMA": (2, 0, 2),
     }
 
-    # Auto-select ARIMA order
     try:
         if args.quick:
             arima_order = (2, d, 1)
@@ -139,9 +106,6 @@ def main():
         except Exception as e:
             print(f"{name:<14} | skipped ({e})")
 
-    # ------------------------------------------------------------------ #
-    # 5. Standalone LSTM
-    # ------------------------------------------------------------------ #
     print("\n" + "=" * 70)
     print("STEP 5 — Standalone LSTM")
     print("=" * 70)
@@ -149,11 +113,8 @@ def main():
         from src import lstm_model as lm
 
         lm.set_tf_seed(42)
-        # scale on train only
         train_scaled, test_scaled, scaler = dp.scale_train_test(train_vals, test_vals)
 
-        # Build sequences. For the test window we prepend the last `look_back`
-        # train points so the first test prediction has a full window.
         full_scaled = np.concatenate([train_scaled.ravel(), test_scaled.ravel()])
         X_train, y_train = lm.create_sequences(train_scaled.ravel(), args.look_back)
 
@@ -161,7 +122,6 @@ def main():
         lm.train_lstm(model, X_train, y_train, epochs=args.epochs,
                       batch_size=args.batch_size, verbose=0)
 
-        # Walk-forward over the test window using realised values
         n_train = len(train_scaled)
         lstm_pred_scaled = []
         for t in range(len(test_scaled)):
@@ -176,9 +136,6 @@ def main():
         print("TensorFlow not installed — skipping LSTM. "
               "Install with `pip install tensorflow` to enable it.")
 
-    # ------------------------------------------------------------------ #
-    # 6. Hybrid ARIMA-LSTM
-    # ------------------------------------------------------------------ #
     print("\n" + "=" * 70)
     print("STEP 6 — Hybrid ARIMA-LSTM")
     print("=" * 70)
@@ -198,14 +155,11 @@ def main():
     except ImportError:
         print("TensorFlow not installed — skipping hybrid model.")
 
-    # ------------------------------------------------------------------ #
-    # 7. Results & plots
-    # ------------------------------------------------------------------ #
+
     print("\n" + "=" * 70)
     print("STEP 7 — Save results")
     print("=" * 70)
 
-    # Plot only the best couple of models + actual to keep it readable
     utils.plot_predictions(
         test_vals, preds,
         title="Forecast vs Actual (test window)",
@@ -221,7 +175,6 @@ def main():
             save_path=os.path.join(args.results_dir, "04_mape_comparison.png"),
         )
 
-    # Metrics table
     summary = pd.DataFrame(metrics).T
     summary = summary[["RMSE", "MAE", "MAPE", "R2"]] if not summary.empty else summary
     summary_path = os.path.join(args.results_dir, "metrics_summary.csv")
