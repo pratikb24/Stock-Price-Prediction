@@ -1,10 +1,3 @@
-"""
-Lightweight tests for the parts that don't require statsmodels/tensorflow:
-data cleaning, scaling, metrics, sequence-building and plotting.
-
-Run:  python tests/test_core.py
-"""
-
 import os
 import sys
 import numpy as np
